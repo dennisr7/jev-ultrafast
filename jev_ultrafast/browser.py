@@ -31,6 +31,27 @@ class Browser:
             if self.evaluate("document.readyState") == "complete":
                 break
             time.sleep(0.02)
+        self.settle()
+
+    def settle(self, quiet=0.5, limit=5.0):
+        """Wait until the observed page stops changing, e.g. while a form finishes hydrating.
+
+        A late change after "complete" would otherwise make the first decision stale.
+        Gives up after `limit` seconds; the freshness check before every action still applies.
+        """
+        deadline = time.monotonic() + limit
+        last, since = None, time.monotonic()
+        while time.monotonic() < deadline:
+            try:
+                marker = self.evaluate(MARKER)
+            except StalePage:
+                marker = None
+            if marker is None or marker != last:
+                last, since = marker, time.monotonic()
+            elif time.monotonic() - since >= quiet:
+                return True
+            time.sleep(0.1)
+        return False
 
     def call(self, method, **params):
         return cdp(method, session_id=self.session, **params)
@@ -74,6 +95,16 @@ class Browser:
                 )
             except RuntimeError:
                 pass
+            # An opened dropdown near the bottom of the view can run off-screen, hiding options (Jev once chose
+            # "Yes" because "No" was cut off). Bring the whole open menu into view before observing.
+            try:
+                self.evaluate(
+                    "(() => { const m=[...document.querySelectorAll('[role=listbox],[class*=\"menu-list\"],[class*=\"__menu\"]')]"
+                    ".find(e => e.checkVisibility()); if (!m) return false; const r=m.getBoundingClientRect();"
+                    " if (r.bottom > innerHeight || r.top < 0) m.scrollIntoView({block: 'nearest'}); return true; })()"
+                )
+            except (StalePage, RuntimeError):
+                pass
         for attempt in range(10):
             try:
                 return browser_operation(
@@ -106,6 +137,19 @@ class Browser:
         self.after_input = action if action["kind"] != "wait" else None
         return result
 
+    def escape(self):
+        """Press Escape, e.g. to close a dropdown menu left open over the next field."""
+        for event in ("keyDown", "keyUp"):
+            self.call("Input.dispatchKeyEvent", type=event, key="Escape", code="Escape", windowsVirtualKeyCode=27)
+        time.sleep(0.1)
+
+    def scroll_to(self, node):
+        """Center an observed element in view, e.g. a required field the last observation saw off-screen."""
+        browser_operation(
+            {"operation": "act", "session": self.session, "action": {"kind": "scroll_to", "node": int(node)}}
+        )
+        time.sleep(0.1)
+
     def close(self):
         if self.target:
             cdp("Target.closeTarget", targetId=self.target)
@@ -137,6 +181,12 @@ def browser_operation(request):
         kind = action["kind"]
         if kind == "scroll":
             call("Input.dispatchMouseEvent", type="mouseWheel", x=550, y=650, deltaX=0, deltaY=action["delta"])
+        elif kind == "scroll_to":
+            if type(action["node"]) is not int:
+                raise ValueError("Invalid observed node")
+            evaluate(
+                f"window.__jevFast?.nodes.get({action['node']})?.scrollIntoView({{block: 'center', behavior: 'instant'}})"
+            )
         elif kind != "wait":
             if type(action["node"]) is not int:
                 raise ValueError("Invalid observed node")
@@ -146,6 +196,10 @@ def browser_operation(request):
               if (!e?.isConnected || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]') ||
                   !e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) return null;
               if (action.kind==='fill' && (e.readOnly || e.getAttribute('aria-readonly')==='true')) return null;
+              // A dropdown opened in the lower half of the view drops its menu off-screen, hiding options:
+              // center it first so the menu has room.
+              if (action.kind==='click' && e.getAttribute('role')==='combobox' &&
+                  e.getBoundingClientRect().top > innerHeight*0.45) e.scrollIntoView({block:'center',behavior:'instant'});
               const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
               if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight) return null;
               if (!e.contains(document.elementFromPoint(x,y))) return null;

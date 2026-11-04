@@ -3,6 +3,7 @@
 import json
 import math
 import os
+import re
 import time
 
 import httpx
@@ -62,7 +63,9 @@ def action_space(actions):
         if node not in indices:
             index = str(len(elements) + 1)
             indices[node] = index
-            element = {k: action[k] for k in ("role", "value", "checked", "selected", "expanded") if k in action}
+            element = {
+                k: action[k] for k in ("role", "value", "checked", "selected", "expanded", "still_empty") if k in action
+            }
             element.update(index=index, label=action["label"].split(" → ")[0], operations=[])
             if kind == "select":
                 element["value"] = action.get("current_value", "")
@@ -113,6 +116,15 @@ def choose(state, goal, history):
         "state": {
             "page": {k: state[k] for k in ("url", "title", "text")},
             "elements": elements,
+            "required_fields_still_empty": [
+                f"{f['label']} ({f['where']})" for f in state.get("form", {}).get("empty", [])
+            ],
+            "optional_fields_still_empty": [
+                f"{f['label']} ({f['where']})" for f in state.get("form", {}).get("optional_empty", [])
+            ],
+            "required_fields_answered": [
+                f"{f['label']} = {f['answer']}" for f in state.get("form", {}).get("answered", [])
+            ],
             "recent_actions": [
                 {k: h.get(k) for k in ("action", "kind", "text", "page_changed")} for h in history[-10:]
             ],
@@ -120,7 +132,8 @@ def choose(state, goal, history):
         "questions": questions,
     }
     started = time.perf_counter()
-    result = post_json("https://api.typesafe.ai/v1/systemone", os.environ["TYPESAFE_API_KEY"], body)
+    base = os.environ.get("TYPESAFE_BASE_URL", "https://api.typesafe.ai").rstrip("/")
+    result = post_json(base + "/v1/systemone", os.environ["TYPESAFE_API_KEY"], body)
     operation_answer = validate_choice(result["answers"].get("operation", {}), operations)
     operation = operation_answer["choice"]
     target = None
@@ -150,6 +163,65 @@ def choose(state, goal, history):
         "latency_ms": round((time.perf_counter() - started) * 1000),
         "request": body,
     }
+
+
+def goal_value(goal, label):
+    """The value the goal spells out for this field (`<label> = "<value>"`), else None.
+
+    Such values are typed verbatim, without the text helper: faster, and long answers (essays) cannot be
+    reworded or refused by a model.
+    """
+    def norm(s):
+        return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
+
+    key = norm(label)
+    if not key:
+        return None
+    for found, value in re.findall(r'(?:^|: |; )\d+\) (.+?) = "([^"]*)"', goal, re.S):
+        if norm(found) == key or (len(key) >= 12 and norm(found).startswith(key[:60])):
+            return value
+    return None
+
+
+def focus_on_goal(page, goal):
+    """Keep only the empty optional fields the goal fills, and add a jump to the next one that is off-screen.
+
+    The page lists every empty optional field (Pronouns, Additional Information, ...); showing them all led Jev to
+    type into fields the goal never mentions. Required-field jumps from the page are kept as they are.
+    """
+    form = page.get("form") or {}
+    # A multi-select answered with only some of the goal's options is not done: list it as still empty.
+    for field in list(form.get("answered", [])):
+        want = goal_value(goal, field["label"])
+        parts = [p.strip() for p in (want or "").split(",")]
+        if want and 1 < len(parts) <= 4 and len(want) < 80:
+            have = {p.strip().lower() for p in field["answer"].split(",")}
+            missing = [p for p in parts if p.lower() not in have]
+            if missing:
+                form["answered"].remove(field)
+                form.setdefault("empty", []).append({"label": f"{field['label']} (has {field['answer']}; still "
+                                                              f"needs {', '.join(missing)})", "where": "on the page"})
+    wanted = [f for f in form.get("optional_empty", []) if goal_value(goal, f["label"]) is not None]
+    form["optional_empty"] = wanted
+    # Required fields the goal says to leave blank (the user's own: essays, attestations) are marked as such, and the
+    # jump goes to the next empty field the goal actually fills, so those blanks neither hide nor block it.
+    blank = re.search(r"Leave these blank: (.*?)\. Never", goal, re.S)
+    blank_labels = [b.strip().strip('"').lower() for b in blank.group(1).split('";')] if blank else []
+    for f in form.get("empty", []):
+        if any(b and f["label"].lower().startswith(b[:40]) for b in blank_labels):
+            f["label"] += " [leave blank: per goal, the user fills this]"
+    to_fill = [f for f in form.get("empty", []) if f.get("node") is not None and "[leave blank" not in f["label"]
+               and goal_value(goal, f["label"]) is not None]
+    if not any(f["where"] == "in view" for f in to_fill):
+        target = next((f for f in to_fill if f["where"] == "below"), None) or next(
+            (f for f in to_fill if f["where"] == "above"), None)
+        target = target or next((f for f in wanted if f["where"] != "in view"), None)
+        if target:
+            page["actions"] = [a for a in page["actions"] if a["id"] != "next_empty_field"]
+            page["actions"].insert(len(page["actions"]) - 1, {
+                "id": "next_empty_field", "kind": "scroll_to", "node": target["node"],
+                "label": f"Scroll to the next empty field the goal fills: {target['label']} ({target['where']})"})
+    return page
 
 
 def field_context(goal, action, page, history):

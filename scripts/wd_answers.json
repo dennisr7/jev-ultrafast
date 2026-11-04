@@ -1,0 +1,398 @@
+{
+  "_note": "Workday answers for wd_apply.py (2026-10-16). by_key = data-automation-id formField-<key>; by_label = regex on the field label. enforce = keys corrected even if Autofill filled them (resume autofill gets the last name wrong). by_company[<tenant>] overrides by_key for that company's Workday (tenant = first part of the myworkdayjobs host). experience/education = canonical entries (from the applicant's own completed NVIDIA application, 2026-10-16) written into the My Experience panels. by_company_label[<tenant>] = [regex, value] label rules for one company. user_only = label regexes always left for the applicant (GPA: the applicant said 3.2 cumulative on 2026-10-24; threshold questions answered from that, unknown GPA wording stays his; legal disclosures and attestations: see memory).",
+  "enforce": [
+    "legalName--firstName",
+    "legalName--lastName",
+    "addressLine1",
+    "city",
+    "postalCode",
+    "phoneNumber"
+  ],
+  "by_key": {
+    "legalName--firstName": "Alex",
+    "legalName--lastName": "Van Sample",
+    "addressLine1": "100 Main Street",
+    "city": "Springfield",
+    "countryRegion": "Florida",
+    "postalCode": "32000",
+    "phoneType": [
+      "Home",
+      "Mobile"
+    ],
+    "phoneNumber": "(555) 010-0100",
+    "candidateIsPreviousWorker": "No"
+  },
+  "by_label": [
+    [
+      "GPA.*\\b(2\\.\\d|3\\.[0-2])\\d?\\b.*(or above|or higher|or greater)|(minimum|at least)( a)? (2\\.\\d|3\\.[0-2])\\d?\\b.*GPA",
+      "Yes"
+    ],
+    [
+      "GPA.*\\b3\\.[3-9]\\d?\\b.*(or above|or higher|or greater)|(minimum|at least)( a)? 3\\.[3-9]\\d?\\b.*GPA",
+      "No"
+    ],
+    [
+      "(what is your|current|cumulative|overall).*\\bGPA\\b|^GPA$",
+      "3.50"
+    ],
+    [
+      "how did you hear|^source$",
+      [
+        "Company Career Site",
+        "Company Website",
+        "Career Site",
+        "Careers Website",
+        "Company Site",
+        "Corporate Website",
+        "Internet Search",
+        "Job Board",
+        "Other"
+      ]
+    ],
+    [
+      "legally authorized to work",
+      "Yes"
+    ],
+    [
+      "require (employer )?(support|sponsorship)|sponsorship",
+      "No"
+    ],
+    [
+      "gender",
+      "Decline to self-identify"
+    ],
+    [
+      "protected veteran|veteran status",
+      "I do not wish to answer"
+    ],
+    [
+      "^Country$",
+      "United States of America"
+    ],
+    [
+      "\\bethnicity\\b|\\brace\\b",
+      "Decline to self-identify"
+    ],
+    [
+      "disability",
+      "I do not wish to answer"
+    ],
+    [
+      "hold a visa|currently (on|hold).*visa",
+      "No"
+    ],
+    [
+      "18 years (of age )?or older|at least 18",
+      "Yes"
+    ],
+    [
+      "in (the )?process of completing your bachelor",
+      "Yes"
+    ],
+    [
+      "legal age to work|of legal age|age of majority",
+      "Yes"
+    ],
+    [
+      "background check",
+      "Yes"
+    ],
+    [
+      "documentation (establishing|proving).*(identity|right to work)|provide documentation|proof of (identity|work)",
+      "Yes"
+    ],
+    [
+      "able to work .*(work location|on a daily basis)|willing to relocate",
+      "Yes"
+    ],
+    [
+      "willing to (submit|undergo|complete).*(drug|screening)",
+      "Yes"
+    ],
+    [
+      "at least 18|over (the age of )?18",
+      "Yes"
+    ],
+    [
+      "worked at .* in the following capacity|previously (worked|employed)",
+      [
+        "None of the above",
+        "have not worked",
+        "never worked",
+        "None"
+      ]
+    ],
+    [
+      "current status|describes your current",
+      [
+        "currently enrolled",
+        "Student",
+        "Enrolled"
+      ]
+    ],
+    [
+      "graduation date|expected graduation",
+      "05/2030"
+    ],
+    [
+      "degree major|major and/or minor|field of study|your major",
+      "Computer Science (Data Science Concentration)"
+    ]
+  ],
+  "by_company": {
+    "nvidia": {
+      "source": "NVIDIA.COM"
+    },
+    "sec": {
+      "source": "Samsung Website"
+    },
+    "leidos": {
+      "source": "Other - Website"
+    },
+    "blueorigin": {
+      "source": "Blue Origin Website"
+    },
+    "crowdstrike": {
+      "source": "CrowdStrike Careers Site"
+    }
+  },
+  "experience": [
+    {
+      "jobTitle": "Research Assistant",
+      "companyName": "Example University",
+      "location": "Springfield, FL, USA",
+      "current": "True",
+      "start": "08/2026",
+      "roleDescription": "[Describe the role: what you worked on and the result.]"
+    },
+    {
+      "jobTitle": "College Intern",
+      "companyName": "Example Energy Co",
+      "location": "Springfield, FL",
+      "current": "False",
+      "start": "05/2026",
+      "end": "08/2026",
+      "roleDescription": "[Describe the role: what you worked on and the result.]"
+    }
+  ],
+  "education": [
+    {
+      "schoolName": "Example University",
+      "degree": [
+        "Bachelor's Degree",
+        "Bachelors",
+        "Bachelor’s Degree",
+        "Bachelor of Science",
+        "Undergraduate or Bachelor"
+      ],
+      "fieldOfStudy": [
+        "Computer Science",
+        "Computer and Information Science",
+        "Computer Engineering"
+      ],
+      "firstYearAttended": "2026",
+      "lastYearAttended": "2030"
+    }
+  ],
+  "languages": {
+    "English": {
+      "fluent": true,
+      "level": [
+        "5 - Fluent",
+        "Fluent",
+        "Native",
+        "Advanced",
+        "Excellent"
+      ]
+    },
+    "Spanish": {
+      "fluent": false,
+      "level": [
+        "3 - Intermediate",
+        "Intermediate",
+        "Average"
+      ]
+    }
+  },
+  "by_company_label": {
+    "stryker": [
+      [
+        "immediate family members .*health ?care professionals|government officials",
+        "No"
+      ],
+      [
+        "met with a Stryker representative",
+        "No"
+      ]
+    ],
+    "adobe": [
+      [
+        "how did you hear",
+        "Adobe.com"
+      ]
+    ],
+    "leidos": [
+      [
+        "highest level of education you've received",
+        "High School Diploma"
+      ]
+    ]
+  },
+  "user_only": [
+    "\\bGPA\\b",
+    "confidentiality|non-disclosure|non-compete|patent agreement|employment agreements",
+    "arbitration|attest|signature|electronic(ally)? sign",
+    "competing offer|other offers|offer deadline|salary|compensation expectation|desired pay"
+  ],
+  "enforce_labels": "ethnicity|race|gender|veteran|disability|sponsorship|legally authorized",
+  "by_question": {
+    "sec": {
+      "If you answered YES to this question earlier in the application process, please provide additional detail here: Have you ever worked for Samsung Electronics and/or its subsidiaries?": {
+        "value": "No",
+        "why": "profile fact"
+      },
+      "Are you currently a full-time employee at another Samsung subsidiary?": {
+        "value": "No",
+        "why": "profile fact"
+      },
+      "Do you have any relatives who work at Samsung Austin Semiconductor?": {
+        "value": "No",
+        "why": "profile fact"
+      },
+      "Are you currently authorized to work in the United States?": {
+        "value": "Yes",
+        "why": "profile fact"
+      },
+      "Are You Available to Work Onsite 5 Days a Week?": {
+        "value": "Yes",
+        "why": "profile fact"
+      },
+      "Inventions: Are you currently seeking or plan to seek a patent related to the semiconductor industry?": {
+        "value": "No",
+        "why": "profile fact"
+      },
+      "If you answered Yes to the above inventions question, please explain. Type NA if you answered No to this question.": {
+        "value": "NA",
+        "why": "profile fact"
+      },
+      "By submitting an application, you, the applicant, agree to not disclose to Samsung, or induce Samsung to use, any confidential or proprietary information (including trade secrets) belonging to any current or previous employer or other person or entity. Please initial that you acknowledge and understand this statement.": {
+        "value": "__USER__",
+        "why": "left for the applicant"
+      }
+    },
+    "leidos": {
+      "1. Various federal laws and regulations restrict the post-government employment activities of former military personnel and federal government employees. The Post-Government Employment Certification (GC489) is designed to assist Leidos in assessing which restrictions, if any, apply to you.": {
+        "value": "I have never been employed by the U.S. government or the U.S. Armed Forces.",
+        "why": "profile fact"
+      },
+      "2. Section 847 of the National Defense Authorization Act for Fiscal Year 2008 (Pub. L. No. 110-181) requires certain current and former Department of Defense (DoD) ofﬁcials or employees, including any agency, command or organization of the DoD, as well as the military departments, to seek and obtain a written ethics opinion regarding the applicability of post-employment restrictions to activities they may undertake on behalf of a contractor. Do you now, or did you at any time in the past 24 months, serve as an official or employee of the DoD? For more information, see National Defense Authorization Action (Section 847)": {
+        "value": "No",
+        "why": "profile fact"
+      },
+      "5. Are you currently working towards a Bachelors or Master’s Degree?": {
+        "value": "Yes",
+        "why": "profile fact"
+      },
+      "6. Do you hold an active U.S. Government Security Clearance?": {
+        "value": "No, I do not hold an active U.S. Government Security Clearance.",
+        "why": "profile fact"
+      },
+      "7. Are you currently or have you previously been a \"non-US government official\"? See Disclosure of Non-U.S. Government Official Status and Relationships for definitions.": {
+        "value": "No",
+        "why": "profile fact"
+      },
+      "8. Are you an immediate family member of, or do you hold a \"close personal relationship\" with, a \"non-US government official\"? See Disclosure of Non-U.S. Government Official Status and Relationships on why Leidos asks this question.": {
+        "value": "__USER__",
+        "why": "left for the applicant"
+      },
+      "10. Do you consent to being contacted by email about this or other opportunities? Click here for more information.": {
+        "value": "__USER__",
+        "why": "left for the applicant"
+      },
+      "11. Do you consent to being contacted by text/SMS about this or other opportunities? Click here for more information.": {
+        "value": "__USER__",
+        "why": "left for the applicant"
+      },
+      "12. Are you a current or former military spouse? (Leidos defines a military spouse as anyone who is currently or was previously married to a member of the U.S. military during which time they served on active duty.)": {
+        "value": "__USER__",
+        "why": "left for the applicant"
+      },
+      "5a. Expected degree completion date.": {
+        "value": "05/2030",
+        "why": "profile fact"
+      }
+    },
+    "blueorigin": {
+      "Citizenship Status": {
+        "value": "__USER__",
+        "why": "left for the applicant"
+      },
+      "Do you have an active clearance?": {
+        "value": "No",
+        "why": "profile fact"
+      }
+    },
+    "globalhr": {
+      "Are you a citizen of the United States?": {
+        "value": "__USER__",
+        "why": "left for the applicant"
+      },
+      "Did you previously work for RTX (including its predecessors or any of its businesses) in any capacity?": {
+        "value": "No",
+        "why": "profile fact"
+      },
+      "Are you a CURRENT U.S. federal government civilian or military (active duty or reserves) employee?": {
+        "value": "No",
+        "why": "profile fact"
+      },
+      "Are you a FORMER U.S. federal government civilian or military (active duty or reserves) employee?": {
+        "value": "No",
+        "why": "profile fact"
+      },
+      "Are you a CURRENT or FORMER employee of RTX’s Independent Auditor, PriceWaterhouseCoopers (PwC)?": {
+        "value": "No",
+        "why": "profile fact"
+      },
+      "A U.S. Person is a lawful permanent resident as defined in 8 U.S.C. 1101(a)(20) or who is a protected individual as defined by 8 U.S.C. 1324b(a)(3). U.S. citizens, U.S. nationals, U.S. permanent residents, or individuals granted refugee or asylee status in the U.S. are considered U.S. persons. NOTE: Having an employment authorization document (EAD) to work in the United States (for example, an H1-B visa) does NOT qualify you as a U.S. Person in most cases. For a complete definition of a U.S. Person click here. Are you a U.S. Person?": {
+        "value": "__USER__",
+        "why": "left for the applicant"
+      }
+    },
+    "boeing": {
+      "The Boeing Company is a government contractor and does business all over the world. Governments impose certain regulatory requirements that affect Boeing, its employees and candidates for employment. Boeing reviews all potential hires as part of its anti-corruption program. In order to ensure compliance with these regulatory requirements, Boeing requires all applicants to complete this form. Throughout the Conflict of Interest (COI) questions, \"Boeing\" refers to any business unit, operating group or function of The Boeing Company and its subsidiaries. If you are a government employee, you know the importance of complying with conflict of interest laws restricting the discussion of possible employment with government contractors. Failure to comply with such laws can result in severe penalties for you and Boeing. Therefore, we require all government employees to complete questions that relate to your employment. Boeing requires you to provide a copy of any applicable disqualification, recusal, ethics opinion, or other writing that evidences your compliance with these laws. When responding, please do not include classified, controlled unclassified, or other sensitive information. 1) Do your current job duties involve Boeing under any of the following conditions? Test (e.g. test pilot), acceptance, inspections, safety rulings, or approval of Boeing products or services Financial responsibilities including work on contracts, procurements, program management, funding decisions, trade issues, claims, and import or export licenses Audits, investigations, and litigation Serving as an employee of the U.S. Federal Aviation Administration (FAA), U.S. Defense Contract Audit Agency (DCAA), U.S. Defense Contract Management Agency (DCMA) or an equivalent non-U.S. government agency Note: You may answer \"No\" if you are currently: An employee of a Boeing subsidiary Employed as a contractor for Boeing or contact hire through an agency or consulting firm A pilot with a United States based commercial airline, cargo or charter company flying products Performing routine machine maintenance, repairs or services on Boeing products": {
+        "value": "No",
+        "why": "profile fact"
+      },
+      "2) Have you ever been employed by or served (full-time or part-time) in any of the following positions? U.S. military officer on active duty at the rank of O-5 or above within the last 5 years U.S. military officer in the military reserves or National Guard at the rank of O-5 or above within the last 5 years U.S. Federal Government civilian employee at the grade equivalent to GS-13 or above within the last 5 years U.S. state, city, country, or local government civilian employee at a grade equivalent to a GS-13 or above in the Federal Civil Service within the last 5 years Special Government Employee in the U.S. Government (e.g. as a member of an advisory board, panel, or committee) withing the last 1 year U.S. Federal Aviation Administration Flight Standards Service Aviation Safety Inspector within the last 2 years": {
+        "value": "No",
+        "why": "profile fact"
+      },
+      "3) Are you currently, or within the last three (3) years, have you been: An employee of non-U.S. government or state-owned, controlled or operated entity (including a military service or civil aviation authority); or An employee of public international organization (such as the World Trade Organization, the International Civil Aviation Organization or the World Bank); or A manager, executive, controlling shareholder, director or officer (including member of a board of directors) of a non-U.S. airline or aircraft holding or leasing company; or A candidate or representative of a non-U.S. political party?": {
+        "value": "No",
+        "why": "profile fact"
+      },
+      "4) To the best of your knowledge, do you have a \"family member\" who currently works for any of the below? A \"family member\" includes spouses, parents, stepparents, legal guardians, mothers-in-law, fathers-in-law, children, stepchildren, siblings, sons-in-law, daughters-in-law, sisters-in-law, brothers-in-law, grandparents, spouse's grandparents, grandchildren, uncles, aunts, nephews, nieces, and first cousins. A non-U.S. government, including, a military, state-owned entity or civil aviation authority; or A public international organization (such as the World Trade Organization, the International Civil Aviation Organization or the World Bank); or A non-U.S. airline or aircraft holding company as a manager, executive, officer (including member of a board of directors), or controlling shareholder": {
+        "value": "__USER__",
+        "why": "left for the applicant"
+      },
+      "5) Boeing engages Deloitte, LLP for auditing purposes. This question identifies personal and family connections to Deloitte, LLP. At any time within the last four (4) years from today's date, have you or a \"close family member\" been employed (full-time or part-time) by Deloitte, LLP? A \"close family member\" includes a person's spouse, spousal equivalent, parent, dependent, nondependent child or sibling. \"Deloitte, LLP\" includes Deloitte LLP, Deloitte and Touche LLP, Deloitte Tax LLP, Deloitte FAS LLP, and Deloitte Consulting LLP, as well as any affiliates of such entities.": {
+        "value": "__USER__",
+        "why": "left for the applicant"
+      }
+    },
+    "crowdstrike": {
+      "Are you eligible to work in the country in which this position is located?": {
+        "value": "Yes",
+        "why": "profile fact"
+      },
+      "Conflict of Interest If hired, do you expect that you will engage in any outside employment, consulting, freelance or advisory work, board service, trade or industry group, teaching role, personally owned business, financial interest, or other outside professional or business activity that could reasonably conflict with CrowdStrike’s business or interfere with the responsibilities of the position for which you are applying (excluding non-competing personal hobbies, passive investments, or uncompensated civic activities that do not impact your work)? This may include an activity or interest that overlaps with your role or expected duties at CrowdStrike; overlaps with CrowdStrike’s business or offerings; creates a significant competing time or loyalty commitment; or could involve CrowdStrike confidential information, resources, or business opportunities. You do not need to disclose an activity that will end before your start date and will leave no continuing interest, obligation, or restriction relevant to cybersecurity or your work at CrowdStrike. A “Yes” response will not automatically disqualify you from consideration. It will allow CrowdStrike to determine whether a potential conflict exists and, if so, whether it can be avoided or appropriately managed. This question applies only to the extent permitted by applicable law.": {
+        "value": "__USER__",
+        "why": "left for the applicant"
+      },
+      "Acknowledgment As an AI-native company, CrowdStrike embraces the thoughtful use of AI tools in our work. During our interview process, some assessments may expressly permit the use of AI and other tools — we will make this clear upfront when that is the case. I acknowledge that unless explicitly told otherwise by my interviewer(s), I will complete all interviews and assessments through my own independent work, without assistance from generative AI, automated tools, or other external resources. Where AI use is permitted, I understand that my interviewer(s) will specify which tools are authorized and how they may be used. I understand that using unauthorized tools or resources during any stage of the interview process may result in my disqualification from consideration.": {
+        "value": "__USER__",
+        "why": "left for the applicant"
+      }
+    }
+  }
+}

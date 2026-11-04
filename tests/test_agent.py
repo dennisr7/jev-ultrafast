@@ -318,3 +318,136 @@ def test_navigation_during_prediction_reobserves_without_action(runner):
     assert runner.state["status"] == "ready"
     assert runner.state["decision"] is None
     runner.state["browser"].act.assert_not_called()
+
+
+def test_typesafe_base_url_is_configurable(monkeypatch):
+    urls = []
+
+    def post(url, _key, body):
+        urls.append(url)
+        return {
+            "model": "test",
+            "answers": {
+                "operation": choice(body["questions"]["operation"]["criteria"], "TYPE_TEXT"),
+                "type_text_target": choice(["1"], "1"),
+            },
+        }
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.setattr(model, "post_json", post)
+    model.choose(page(), "Find a book", [])
+    monkeypatch.setenv("TYPESAFE_BASE_URL", "https://ai-gateway.vercel.sh/typesafe/")
+    model.choose(page(), "Find a book", [])
+    assert urls == ["https://api.typesafe.ai/v1/systemone", "https://ai-gateway.vercel.sh/typesafe/v1/systemone"]
+
+
+def blocked():
+    return {**decision("BLOCKED"), "operation": "BLOCKED", "target": None}
+
+
+def test_blocked_with_empty_required_field_scrolls_to_it_instead_of_stopping(runner):
+    runner.state["page"]["form"] = {"required": 2, "empty": [{"node": 42, "label": "How did you hear", "where": "above"}]}
+    runner.state["decision"] = blocked()
+    runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    runner.state["browser"].scroll_to.assert_called_once_with(42)
+    assert runner.state["status"] == "ready"
+    assert runner.state["history"][-1]["action"] == "Scroll to required field still empty: How did you hear"
+
+
+def test_blocked_is_accepted_once_each_empty_field_has_used_its_redirects(runner):
+    runner.state["page"]["form"] = {"required": 1, "empty": [{"node": 42, "label": "Left blank", "where": "below"}]}
+    for _ in range(loop.REDIRECTS_PER_FIELD):
+        runner.state["decision"] = blocked()
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+        assert runner.state["status"] == "ready"
+    runner.state["decision"] = blocked()
+    runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    assert runner.state["status"] == "blocked"
+
+
+def test_blocked_without_a_checklist_stops_as_before(runner):
+    runner.state["decision"] = blocked()
+    runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    assert runner.state["status"] == "blocked"
+    runner.state["browser"].scroll_to.assert_not_called()
+
+
+def test_model_receives_whole_page_checklist(monkeypatch):
+    post = Mock(return_value={"model": "m", "answers": {"operation": choice(["WAIT", "DONE", "BLOCKED"], "WAIT")}})
+    monkeypatch.setattr(model, "post_json", post)
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    p = page()
+    p["actions"] = [a for a in p["actions"] if a["kind"] == "wait"]
+    p["form"] = {"required": 3, "empty": [{"node": 7, "label": "Sponsorship", "where": "below"}]}
+    model.choose(p, "Fill the form", [])
+    assert post.call_args.args[2]["state"]["required_fields_still_empty"] == ["Sponsorship (below)"]
+
+
+def test_jump_control_becomes_its_own_operation_and_scrolls_the_observed_node(monkeypatch):
+    jump = {"id": "next_empty_field", "kind": "scroll_to", "node": 7, "label": "Scroll to ... Sponsorship (below)"}
+    _elements, _targets, controls = model.action_space([*page()["actions"], jump])
+    assert controls["NEXT_EMPTY_FIELD"] is jump
+    import jev_ultrafast.browser as browser
+
+    cdp = Mock(return_value={"result": {"value": None}})
+    monkeypatch.setattr(browser, "cdp", cdp)
+    browser_operation({"operation": "act", "session": "s", "action": jump})
+    assert "nodes.get(7)" in cdp.call_args.kwargs["expression"]
+    assert "scrollIntoView" in cdp.call_args.kwargs["expression"]
+
+
+def test_model_receives_answered_fields_as_evidence(monkeypatch):
+    post = Mock(return_value={"model": "m", "answers": {"operation": choice(["WAIT", "DONE", "BLOCKED"], "DONE")}})
+    monkeypatch.setattr(model, "post_json", post)
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    p = page()
+    p["actions"] = [a for a in p["actions"] if a["kind"] == "wait"]
+    p["form"] = {"required": 2, "empty": [], "answered": [
+        {"label": "Sponsorship", "answer": "No"}, {"label": "Email", "answer": "(filled)"}]}
+    model.choose(p, "Fill the form", [])
+    sent = post.call_args.args[2]["state"]
+    assert sent["required_fields_still_empty"] == []
+    assert sent["required_fields_answered"] == ["Sponsorship = No", "Email = (filled)"]
+
+
+def test_still_empty_flag_reaches_the_model_element_table():
+    action = {"id": "e1", "kind": "click", "label": "CONFLICT OF INTEREST", "role": "combobox", "value": "",
+              "node": 5, "still_empty": True}
+    elements, _targets, _controls = model.action_space([action])
+    assert elements[0]["still_empty"] is True
+
+
+def test_goal_value_is_typed_verbatim_without_the_text_helper(runner, monkeypatch):
+    helper = Mock(return_value=("reworded", {"model": "test", "latency_ms": 10}))
+    monkeypatch.setattr(loop, "field_text", helper)
+    runner.state["goal"] = 'Fill the form: 1) Search = "a long answer, with commas"; 2) Other = "x"'
+    runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    helper.assert_not_called()
+    assert runner.state["browser"].act.call_args.kwargs["text"] == "a long answer, with commas"
+
+
+def test_goal_value_matches_labels_loosely_and_misses_unknown_fields():
+    goal = 'top to bottom: 1) Why do you want to join Figma? = "Because"; 2) Email = "a@b.c"'
+    assert model.goal_value(goal, "Why do you want to join Figma?") == "Because"
+    assert model.goal_value(goal, "Email*") == "a@b.c"
+    assert model.goal_value(goal, "Phone") is None
+
+
+def test_partly_answered_multi_select_is_listed_as_still_empty():
+    page = {"actions": [{"id": "wait", "kind": "wait"}], "form": {"empty": [], "optional_empty": [], "answered": [
+        {"label": "Which languages do you use?", "answer": "C++"}, {"label": "Email", "answer": "(filled)"}]}}
+    model.focus_on_goal(page, 'top to bottom: 1) Which languages do you use? = "C++, Python"; 2) Email = "a@b.c"')
+    assert [f["label"] for f in page["form"]["empty"]] == ["Which languages do you use? (has C++; still needs Python)"]
+    assert [f["label"] for f in page["form"]["answered"]] == ["Email"]
+
+
+def test_leave_blank_fields_are_marked_and_do_not_block_the_jump():
+    page = {"actions": [{"id": "wait", "kind": "wait"}], "form": {"optional_empty": [], "answered": [], "empty": [
+        {"node": 1, "label": "Why Anthropic?", "where": "in view"},
+        {"node": 2, "label": "Will you require sponsorship?", "where": "above"}]}}
+    goal = ('Fill: 1) Will you require sponsorship? = "No". For a dropdown, open it. Leave these blank: '
+            '"Why Anthropic?". Never touch')
+    model.focus_on_goal(page, goal)
+    assert page["form"]["empty"][0]["label"].endswith("[leave blank: per goal, the user fills this]")
+    jump = next(a for a in page["actions"] if a["id"] == "next_empty_field")
+    assert jump["node"] == 2

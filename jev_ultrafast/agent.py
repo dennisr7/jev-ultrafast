@@ -5,8 +5,10 @@ import time
 from pathlib import Path
 
 from .browser import Browser, StalePage
-from .model import action_space, choose, field_context, field_text
+from .model import action_space, choose, field_context, field_text, focus_on_goal, goal_value
 from .questions import MAX_STEPS
+
+REDIRECTS_PER_FIELD = 2
 
 
 class Agent:
@@ -77,6 +79,7 @@ class Agent:
                 raise ValueError("This run has stopped. Start a fresh demo.")
             if len(state["decisions"]) >= MAX_STEPS * 2:
                 raise ValueError("Reached the demo's model-call budget")
+            focus_on_goal(state["page"], state["goal"])
             state["decision"] = choose(state["page"], state["goal"], state["history"])
             state["decisions"].append(
                 {
@@ -97,6 +100,8 @@ class Agent:
                 if not state["browser"].fresh(page):
                     state["status"] = "ready"
                     raise StalePage("Page changed since the decision. Choose again.")
+                if selected == "BLOCKED" and self.redirect_to_empty_field(page):
+                    return self.snapshot()
                 state["status"] = "done" if selected == "DONE" else "blocked"
                 state["plan_index"] = int(selected == "DONE")
                 state["elapsed_ms"] = round((time.perf_counter() - state["started_at"]) * 1000)
@@ -109,8 +114,11 @@ class Agent:
             if action["kind"] == "fill":
                 if not state["browser"].fresh(page):
                     raise StalePage("Page changed before text generation. Choose again.")
+                verbatim = goal_value(state["goal"], action["label"])
                 context = field_context(state["goal"], action, page, state["history"])
-                if self.pending_text and self.pending_text[0] == context:
+                if verbatim is not None:
+                    text, helper = verbatim, {"model": "goal (verbatim)", "latency_ms": 0}
+                elif self.pending_text and self.pending_text[0] == context:
                     _, text, helper = self.pending_text
                 else:
                     text, helper = field_text(context)
@@ -162,6 +170,40 @@ class Agent:
         else:
             raise ValueError("Unknown command")
         return self.snapshot()
+
+    def redirect_to_empty_field(self, page):
+        """Refuse BLOCKED while a required field is still empty: scroll to it and choose again.
+
+        Each field gets at most REDIRECTS_PER_FIELD tries, so a field the goal leaves blank on
+        purpose (or one Jev cannot answer) still lets the run stop.
+        """
+        state = self.state
+        tries = state.setdefault("redirects", {})
+        field = next(
+            (f for f in page.get("form", {}).get("empty", []) if tries.get(f["label"], 0) < REDIRECTS_PER_FIELD),
+            None,
+        )
+        if field is None or len(state["history"]) >= MAX_STEPS:
+            return False
+        tries[field["label"]] = tries.get(field["label"], 0) + 1
+        state["browser"].scroll_to(field["node"])
+        state["history"].append(
+            {
+                "step": len(state["history"]) + 1,
+                "action": f"Scroll to required field still empty: {field['label']}",
+                "kind": "scroll",
+                "choice": "BLOCKED",
+                "operation": "BLOCKED",
+                "target": None,
+                "text": None,
+                "page_changed": None,
+                "url": page["url"],
+            }
+        )
+        state["page"] = state["browser"].observe(screenshot=self.screenshots)
+        state["history"][-1]["page_changed"] = state["page"]["fingerprint"] != page["fingerprint"]
+        state["status"] = "ready"
+        return True
 
     def run(self):
         while self.state["status"] not in {"done", "blocked"}:
