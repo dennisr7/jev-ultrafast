@@ -10,19 +10,22 @@ from .questions import MAX_STEPS
 
 
 class Agent:
-    def __init__(self, url, goals, *, record_dir=None, screenshots=False):
+    def __init__(self, url, goals, *, record_dir=None, screenshots=False, browser=None):
         task = goals.strip() if isinstance(goals, str) else "\n".join(goals).strip()
         if not task:
             raise ValueError("Supply a task")
         plan = [task]
         self.pending_text = None
-        self.browser = Browser(url)
+        # A caller-supplied browser (e.g. the general harness's) stays open when this run ends.
+        self.owns_browser = browser is None
+        self.browser = browser or Browser(url)
         self.record_dir = Path(record_dir) if record_dir else None
         self.screenshots = screenshots or bool(record_dir)
         try:
             page = self.browser.observe(screenshot=self.screenshots)
         except Exception:
-            self.browser.close()
+            if self.owns_browser:
+                self.browser.close()
             raise
         self.state = dict(
             browser=self.browser,
@@ -165,7 +168,8 @@ class Agent:
             yield self.command("tick")
 
     def close(self):
-        self.browser.close()
+        if self.owns_browser:
+            self.browser.close()
 
     def __enter__(self):
         return self
