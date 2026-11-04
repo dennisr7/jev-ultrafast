@@ -1,0 +1,20 @@
+{
+  "name": "workday-cli",
+  "version": "1.0.0",
+  "description": "CLI for searching jobs on a company's Workday-hosted career site (<tenant>.<wdN>.myworkdayjobs.com/<site>) — no authentication, zero runtime dependencies. Only works for companies exposing Workday directly (not those hiding it behind a custom front-end, e.g. Apple).",
+  "type": "module",
+  "main": "src/cli.ts",
+  "bin": {
+    "workday-search": "src/cli.ts"
+  },
+  "scripts": {
+    "start": "bun run src/cli.ts",
+    "test": "bun test --timeout 30000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/bun": "latest"
+  }
+}

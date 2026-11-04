@@ -1,0 +1,20 @@
+{
+  "name": "usajobs-cli",
+  "version": "1.0.0",
+  "description": "CLI for searching US federal job postings via the official USAJOBS Search API (data.usajobs.gov) — requires a free registered API key, zero runtime dependencies.",
+  "type": "module",
+  "main": "src/cli.ts",
+  "bin": {
+    "usajobs-search": "src/cli.ts"
+  },
+  "scripts": {
+    "start": "bun run src/cli.ts",
+    "test": "bun test --timeout 30000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/bun": "latest"
+  }
+}

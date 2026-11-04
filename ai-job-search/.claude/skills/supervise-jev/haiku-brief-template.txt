@@ -1,0 +1,25 @@
+You are supervising a browser agent called Jev. Jev proposes one action at a time; you approve or reject each before it runs. Do not do the task yourself and do not use browser tools: only Bash and Read.
+
+The user (the candidate) asked for this run: fill __COMPANY__'s "__TITLE__" application so the user can review and submit it themselves. URL: __URL__ . It must NEVER be submitted.
+Read ~/ai-job-search/jev-ultrafast/.claude/skills/supervise-jev/SKILL.md (sections 2-3, "Job-application forms", "What Jev sees on a form") and __RUN__/goal.txt (the expected value for every field).
+
+All commands run from ~/ai-job-search/jev-ultrafast.
+0. Record open tabs (read-only):  uv run python scripts/jev_read_form.py snapshot __RUN__/tabs_before.json
+1. Start Jev (exactly this one command):
+   nohup uv run --env-file .env python scripts/jev_task.py --step --keep-open --max-steps 70 --timeout 300 __ATTACH__--output __RUN__ --url "__URL__" --goal "$(cat __RUN__/goal.txt)" > __RUN__/stdout.txt 2>&1 &
+__ATTACH_NOTE__
+2. Loop: `python3 scripts/jev_answer.py wait --output __RUN__`, then answer every decision with go / skip / stop (`python3 scripts/jev_answer.py go --output __RUN__` etc.) until a "result" event appears.
+   - APPROVE: scroll, wait, NEXT_EMPTY_FIELD, typing into a field listed in goal.txt (the runner types the value goal.txt gives; check the typed "text" in the next action event matches goal.txt exactly, and if not, note it), opening a dropdown listed in goal.txt or the phone Country dropdown, clicking the option goal.txt gives for the dropdown just opened (United States +1 for the phone country; the Springfield suggestion for Location (City)), DONE once every goal.txt field has its value.
+   - SKIP: a wrong option, any field not in goal.txt, "Locate me" (it would trigger a browser location prompt), the Voluntary Self-Identification section, Resume/Cover Letter/file controls ("Attach", "Dropbox", "Enter manually"), "Clear selections" unless fixing a wrong answer. Same wrong decision after 2 skips: STOP.
+   - STOP at once: "Submit application" or anything that submits, or a URL that is not job-boards.greenhouse.io.
+   - goal.txt lists only fields this form has, so do not wait for others before approving DONE. If a goal.txt field turns out not to exist on the form (or is optional and Jev leaves it), report it but do not stop or skip DONE for it; the supervisor verifies the full form afterwards.
+   - The form may pre-fill contact fields (name, email, phone, city, LinkedIn) from the candidate's saved profile; a field already showing goal.txt's value needs nothing.
+   - The question "If you selected a response to the prior question other than none of the above..." is required by the form even after "None of the above". The candidate confirmed he is a U.S. citizen: APPROVE ticking "U.S. citizen" there. It is accurate and does not contradict "None of the above".
+   - "stale" = the approved action did not run; judge the repeat normally.
+   After each answer append a JSON line to __RUN__/review.jsonl:
+   {"step":N,"operation":"...","element":"...","jev_confidence":C,"verdict":"go|skip|stop","my_confidence":0-1,"reason":"..."}
+3. Verify (do not trust DONE): run
+   uv run python scripts/jev_check_runs.py __RUN__
+   (read-only; compares every goal.txt field with the value on Jev's own tab, and lists fields this form does not have). Also Read __RUN__/final.jpg. Never click, close or navigate any tab.
+4. Edit nothing except review.jsonl and tabs_before.json. No commits, no pushes.
+Reply compactly: outcome; approved/skipped/stopped counts; decisions with my_confidence < 0.7 and why; pass/fail per goal.txt field; anything unexpected.

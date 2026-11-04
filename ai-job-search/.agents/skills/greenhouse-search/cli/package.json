@@ -1,0 +1,20 @@
+{
+  "name": "greenhouse-cli",
+  "version": "1.0.0",
+  "description": "CLI for searching jobs on Greenhouse's public Job Board API (boards-api.greenhouse.io), one company at a time — no authentication, zero runtime dependencies.",
+  "type": "module",
+  "main": "src/cli.ts",
+  "bin": {
+    "greenhouse-search": "src/cli.ts"
+  },
+  "scripts": {
+    "start": "bun run src/cli.ts",
+    "test": "bun test --timeout 30000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/bun": "latest"
+  }
+}
