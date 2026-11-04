@@ -1,99 +1,102 @@
-<img src="docs/banner.svg" alt="Jev Ultrafast · Browser Use × TypeSafe" width="100%" />
+# Jev Apply
 
-# Jev Ultrafast ⚡
+An AI-assisted job application workflow. Claude finds and scores roles and drafts a tailored CV and cover letter. A browser agent (Jev) then fills the application form, one guarded step at a time, and **you** review and submit.
 
-> [!IMPORTANT]
-> **The Browser Use Cloud waitlist is open.** Get early access to ultrafast browser agents in the cloud.
-> **[Join the waitlist →](https://browser-use.com/ultrafast?utm_source=github&utm_medium=readme&utm_campaign=jev-ultrafast)**
-
-**A browser agent with a dynamic, indexed action space.**
-
-Give it one goal. [TypeSafe's Jev](https://docs.typesafe.ai/introduction) picks an operation and an element. A small LLM writes text only when the operation is `TYPE_TEXT`.
-
-**Zürich → London on Google Flights in 7.1 seconds.** One natural-language goal, actual text generation, and loading waits included.
-
-<a href="docs/demo.mp4"><img src="docs/demo.gif" alt="A real Google Flights search at 1× speed, with generated city names and dynamic operation/target decisions" width="100%" /></a>
-
-[Watch the MP4](docs/demo.mp4) · [Measurements](docs/performance.md) · [Read the loop](jev_ultrafast/agent.py)
-
-## The action space
-
-Every observation produces a new element table:
-
-```text
-[1] button    Change ticket type · Round trip
-[2] combobox  Where from?        · San Francisco
-[3] combobox  Where to?          · empty
-[4] textbox   Departure          · empty
-...
+```
+find roles          score fit           tailor documents        fill the form          you submit
+/scrape  ────────►  /rank / /apply ───► CV + cover letter ────► Jev (supervised) ────► after review
+(ai-job-search/)    (ai-job-search/)    (LaTeX, PDF)            (this repo's agent)
 ```
 
-The operations are `CLICK`, `TYPE_TEXT`, `SELECT`, `SCROLL_UP`, `SCROLL_DOWN`, `WAIT`, `DONE`, and `BLOCKED`. Only supported operations and targets are offered.
+It never submits for you. Every run ends at a filled form in a browser tab you control.
 
-```text
-                      one TypeSafe request
-                     ┌───────────────────────────┐
-page → element table → operation                 │
-                     │ click_target              │
-                     │ type_text_target          │
-                     │ select_target, if present │
-                     └─────────────┬─────────────┘
-                         use the matching target
-                                   │
-                    CLICK [7] ─────┤──→ browser
-                TYPE_TEXT [3] ─────┘
-                          ↓
-                   small LLM → text → browser
-```
+## What is in the box
 
-Target questions are speculative. If the operation is `CLICK`, only `click_target` can execute. Two decisions, **one network round trip**. Each target head contains only compatible elements. Native dropdown choices carry an observed element/option index.
+| Part | Where | What it does |
+| --- | --- | --- |
+| Application workspace | [ai-job-search/](ai-job-search/) | Claude Code skills and commands: set up a profile, scrape job boards, rank postings, evaluate fit, draft a CV and cover letter, prepare interviews |
+| Form-filling agent | [jev_ultrafast/](jev_ultrafast/) | Reads a page as a table of controls, picks one operation and one target per step, and executes it in Chrome behind freshness and occlusion guards |
+| Harness | [jev_ultrafast/harness.py](jev_ultrafast/harness.py), [tools.py](jev_ultrafast/tools.py) | The same guarded browser layer as tools: observe, act on a handle, record and replay, with an approval gate |
+| Pipeline scripts | [scripts/](scripts/) | Goal builders, a rules-first step reviewer, batch runners, Workday and Greenhouse helpers, and live checks |
+| Supervisor skill | [.claude/skills/supervise-jev/](.claude/skills/supervise-jev/) | Lets Claude run and review Jev tasks, and verify the final page independently |
 
-There are no site-specific action scripts or prepared field strings in the policy. The Flights example supplies a goal and independently verifies the outcome. The screenshot renderer adds labels afterward; it does not drive the browser.
+## Requirements
 
-## Try it
+- Python 3.12+ and [uv](https://docs.astral.sh/uv/)
+- Chrome with remote debugging (or a separate throwaway Chrome, see step 1)
+- [Claude Code](https://claude.com/claude-code) for the `ai-job-search/` commands
+- Two API keys in `.env`: `TYPESAFE_API_KEY` for the hosted Jev policy model, and `TEXT_MODEL_API_KEY` for the small model that writes free-text answers (an OpenRouter-compatible key in the example configuration)
+- Optional: a LaTeX distribution and `pdftotext` for CV compilation and the ATS check (see [ai-job-search/README.md](ai-job-search/README.md))
+
+## Tutorial: fill a job application
+
+### 1. Set up and check the browser
 
 ```bash
-git clone https://github.com/browser-use/jev-ultrafast.git
-cd jev-ultrafast
+git clone <this repo> && cd <this repo>
 uv sync
-cp .env.example .env
-# Add TYPESAFE_API_KEY and TEXT_MODEL_API_KEY.
-# Or use Jev via Vercel AI Gateway: put an AI Gateway key in TYPESAFE_API_KEY and set
-# TYPESAFE_BASE_URL=https://ai-gateway.vercel.sh/typesafe
-uv run jev
+cp .env.example .env          # add TYPESAFE_API_KEY and TEXT_MODEL_API_KEY
+uv run browser-harness --doctor
 ```
 
-Open **http://127.0.0.1:8766** and click **Start demo → Run automatically**. The inspector shows numbered elements, operation probabilities, target probabilities, and executed actions. **Choose next** pauses before execution.
-
-Chrome connects through [Browser Harness](https://github.com/browser-use/browser-harness), installed by `uv sync`. Run `uv run browser-harness --doctor` if it needs connecting. Allow remote debugging in Chrome when prompted.
-
-`TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting.
-
-## Use the library
-
-```python
-from jev_ultrafast import Agent
-
-with Agent(
-    "https://www.google.com/travel/flights?hl=en",
-    "Find one-way flights from Zurich to London on September 20, 2026, "
-    "for one adult in economy. Stop when matching flight options are visible.",
-) as agent:
-    for state in agent.run():
-        print(state["elapsed_ms"], state["status"])
-```
-
-Run with `uv run --env-file .env python your_script.py`. The same policy can run a different task:
+Jev needs Chrome with remote debugging. Either turn it on at `chrome://inspect/#remote-debugging` (it then shares your signed-in profile), or give Jev its own throwaway Chrome so your browser is never touched:
 
 ```bash
-uv run --env-file .env python examples/run.py \
-  --url https://en.wikipedia.org/wiki/Main_Page \
-  --goal 'Find and open the Wikipedia article about Gödel’s incompleteness theorems.'
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9333 \
+  --user-data-dir=/tmp/jev-profile --no-first-run about:blank &
+export BU_CDP_URL=http://127.0.0.1:9333 BU_NAME=jev
 ```
 
-`uv run --env-file .env python scripts/jev_task.py --url URL --goal '...'` runs one task and prints a JSON result (outcome, steps, final URL, page text, `final.jpg`). Add `--step` to pause before every action and approve it with `go`, `skip` or `stop`. A `DONE` outcome still needs independent verification.
+Check the setup before pointing Jev at anything real. Neither check calls a model or visits a website:
 
-`uv run --env-file .env python examples/flights.py --keep-open` performs the flight search, checks the actual route/date/results, and saves its trace. It does not select or book a flight.
+```bash
+uv run python scripts/check_guards.py                    # 21 browser freshness and safety checks
+uv run python scripts/check_harness.py --rounds 3        # the harness against a local test page
+```
+
+### 2. Pick a role and prepare documents
+
+In Claude Code, from the `ai-job-search/` folder: `/setup` builds your profile once. `/scrape` or `/greenhouse-sweep` finds postings, `/rank` shortlists them, and `/apply <posting URL>` evaluates fit and produces a tailored CV and cover letter. Save the PDFs; Jev attaches them in step 4. Your profile and documents stay local; see [ai-job-search/README.md](ai-job-search/README.md).
+
+### 3. Write a narrow goal
+
+A good goal states one outcome, answers the form's own questions verbatim, lists what to leave alone, and forbids submitting. For a Greenhouse posting, list that posting's real questions first:
+
+```bash
+curl -s "https://boards-api.greenhouse.io/v1/boards/<board>/jobs/<job id>?questions=true"
+```
+
+Then write the goal in this shape. Values written as `N) Label = "value"` are typed exactly as written with no model call, which also keeps long answers from being reworded:
+
+```text
+Fill this job application without submitting it. Click "Autofill my application" if the form has it.
+Answer these questions, top to bottom: 1) Are you legally authorized to work in the United States? = "Yes";
+2) Will you require visa sponsorship? = "No". For a dropdown, open it and click the exact option.
+Leave these blank: "Why do you want to work here?". Never touch the Voluntary Self-Identification
+section or any other field. Never click Submit application. Choose DONE when every question above shows its answer.
+```
+
+Rules that keep this safe:
+- Never put passwords, card numbers, government IDs or API keys in a goal.
+- A question you have not answered yourself stays blank. Do not let anything guess it.
+- Attestations, arbitration or AI-policy checkboxes, and voluntary self-identification are yours to answer. Leave them out of the goal.
+- Keep your answers in a local file that is git-ignored, not in a shared repo.
+
+### 4. Run it with you approving each step
+
+```bash
+uv run --env-file .env python scripts/jev_task.py --url "<application URL>" --goal "<your goal>" --step --keep-open
+```
+
+`--step` pauses before every action and prints the decision (operation, element, confidence, URL). In a second terminal answer with `python3 scripts/jev_answer.py wait` to see the pending step, then `go`, `skip` or `stop`. Check each step against your goal, and refuse anything that submits, sends or deletes. A `BLOCKED` on an unexpected page is correct behavior, not a failure. Attach the resume with `--attach FIELD_ID=/path/to/resume.pdf` if the form has an upload.
+
+### 5. Optional: let Claude supervise
+
+The `supervise-jev` skill runs this loop for you: it starts the task, reviews each decision against the goal, refuses Submit outright, escalates anything unusual to you, and verifies the final page. In Claude Code say, for example, "supervise Jev on this application", and review its report.
+
+### 6. Verify and submit yourself
+
+`DONE` is not proof. Read the final page (`artifacts/jev_task/final.jpg` and the result JSON), check every required field and answer, then click Submit yourself in the kept-open tab. To repeat a flow on a similar form, use the harness below: record a trace once and `replay` it, falling back to `run_goal` if a step fails.
 
 ## Drive it as tools (the harness)
 
@@ -122,111 +125,34 @@ with Harness("https://example.com/form") as h:
 
 Details and limits: [docs/general-harness.md](docs/general-harness.md).
 
-## Tutorial: fill a job application with ai-job-search
+## How the agent works
 
-[ai-job-search](https://github.com/MadsLorentzen/ai-job-search) is a Claude Code workspace that finds roles, scores fit, and drafts a tailored CV and cover letter. Jev does the last step: it fills the web form, and **you** review and submit. This assumes ai-job-search is cloned and this repo sits inside it as `jev-ultrafast/`.
+1. **Observe.** One browser call reads visible controls, their names, values and text, and keeps references to the real DOM nodes. A whole-page checklist lists required fields still empty, in view or not.
+2. **Choose.** One request asks which operation to perform (click, type, select, scroll, wait, done, blocked) and which target fits each operation. Only the target for the chosen operation is used.
+3. **Guard.** Before input, the code re-checks that the page and the target are unchanged, resolves current geometry, and rejects covered or disabled controls. Model output never becomes selectors, coordinates, shell commands or JavaScript.
+4. **Write text only when needed.** Values spelled out in the goal are typed verbatim. Otherwise a small model writes the value as a small JSON object.
+5. **Log, then observe.** Each executed action is logged before the next observation. Mutations are never retried.
 
-### 1. Set up and check the browser
+No screenshots are sent to the model in the default loop. Design notes: [docs/design.md](docs/design.md). The longer-term idea of generating custom interfaces over existing apps: [docs/meta-ui-design.md](docs/meta-ui-design.md).
 
-```bash
-cd jev-ultrafast
-uv sync
-cp .env.example .env          # add TYPESAFE_API_KEY and TEXT_MODEL_API_KEY
-uv run browser-harness --doctor
-```
+## Limits
 
-Jev needs Chrome with remote debugging. Either turn it on at `chrome://inspect/#remote-debugging` (it then shares your signed-in profile), or give Jev its own throwaway Chrome so your browser is never touched:
+- `DONE` is a choice, not proof. Always verify the final page.
+- The page reader handles common HTML and ARIA controls. Shadow roots, frames, canvas, pop-up tabs, nested scrolling and arbitrary keyboard widgets are not supported.
+- Decisions come from a hosted model, so behavior can change with the model version. Pin `TYPESAFE_MODEL` for a batch.
+- The Workday and Greenhouse scripts ship with placeholder answers (`[your answer]`). They do nothing useful until you supply your own, and they must stay out of any public repo once you do.
+- Some employers' sites forbid automated form filling. Check before using this on one.
 
-```bash
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9333 \
-  --user-data-dir=/tmp/jev-profile --no-first-run about:blank &
-export BU_CDP_URL=http://127.0.0.1:9333 BU_NAME=jev
-```
+## Repository layout
 
-Check the setup before pointing Jev at anything real. Neither check calls a model or visits a website:
-
-```bash
-uv run python scripts/check_guards.py                    # 21 browser freshness and safety checks
-uv run python scripts/check_harness.py --rounds 3        # the harness against a local test page
-```
-
-### 2. Pick a role and prepare documents (in ai-job-search)
-
-In Claude Code, from the ai-job-search folder: `/scrape` or `/greenhouse-sweep` finds postings, `/rank` shortlists them, and `/apply <posting URL>` evaluates fit and produces a tailored CV and cover letter. Save the PDFs; Jev attaches them in step 4.
-
-### 3. Write a narrow goal
-
-A good goal states one outcome, answers the form's own questions verbatim, lists what to leave alone, and forbids submitting. For a Greenhouse posting, list that posting's real questions first:
-
-```bash
-curl -s "https://boards-api.greenhouse.io/v1/boards/<board>/jobs/<job id>?questions=true"
-```
-
-Then write the goal in this shape. Values written as `N) Label = "value"` are typed exactly as written with no model call, which also keeps long answers from being reworded:
-
-```text
-Fill this job application without submitting it. Click "Autofill my application" if the form has it.
-Answer these questions, top to bottom: 1) Are you legally authorized to work in the United States? = "Yes";
-2) Will you require visa sponsorship? = "No". For a dropdown, open it and click the exact option.
-Leave these blank: "Why do you want to work here?". Never touch the Voluntary Self-Identification
-section or any other field. Never click Submit application. Choose DONE when every question above shows its answer.
-```
-
-Rules that keep this safe:
-- Never put passwords, card numbers, government IDs or API keys in a goal.
-- A question you have not answered yourself stays blank. Do not let anything guess it.
-- Attestations, arbitration or AI-policy checkboxes, and voluntary self-identification are yours to answer. Leave them out of the goal.
-- Keep your answers in a local file that is git-ignored, not in this repo.
-
-### 4. Run it with you approving each step
-
-```bash
-uv run --env-file .env python scripts/jev_task.py --url "<application URL>" --goal "<your goal>" --step --keep-open
-```
-
-`--step` pauses before every action and prints the decision (operation, element, confidence, URL). In a second terminal answer with `python3 scripts/jev_answer.py wait` to see the pending step, then `go`, `skip` or `stop`. Check each step against your goal, and refuse anything that submits, sends or deletes. A `BLOCKED` on an unexpected page is correct behavior, not a failure. Attach the resume with `--attach FIELD_ID=/path/to/resume.pdf` if the form has an upload.
-
-### 5. Optional: let Claude supervise
-
-The `supervise-jev` skill in ai-job-search runs this loop for you: it starts the task, reviews each decision against the goal, refuses Submit outright, escalates anything unusual to you, and verifies the final page. In Claude Code say, for example, "supervise Jev on this application", and review its report.
-
-### 6. Verify and submit yourself
-
-`DONE` is not proof. Read the final page (`artifacts/jev_task/final.jpg` and the result JSON), check every required field and answer, then click Submit yourself in the kept-open tab. To repeat a flow on a similar form, use the harness above: record a trace once and `replay` it, falling back to `run_goal` if a step fails.
-
-## Why it moves
-
-- **One request per decision cycle.** Operation and target heads share the same observed state.
-- **No screenshots in the default agent loop.** Jev consumes structured state. The inspector opts into screenshots; the video uses a separate continuous screencast.
-- **One browser call per snapshot.** Read visible controls, their names, values, and text atomically. Keep references to the actual DOM nodes.
-- **Validate the selected target.** Clicks check the document, form values, target, and nearby context. Animation alone does not force another prediction. Resolve current geometry and reject covered controls before input.
-- **Wait for useful state.** After typing into a combobox, wait for visible suggestions, capped at 200 ms. Other interactions get at most two animation frames or 50 ms. These reads happen after execution is logged.
-- **Keep hidden tabs rendering.** Focus emulation prevents background animation throttling without switching Chrome's visible tab.
-- **Send visible text.** Offscreen article bodies and footers do not fill the model context.
-- **Reuse an interrupted text request.** A generated value survives a stale-page retry only if the entire text-helper input is unchanged.
-
-Every executed target is resolved from an observed node. The executor rechecks page freshness and click occlusion. Model output never becomes selectors, coordinates, shell commands, or executable JavaScript. Text-helper output must parse as a small JSON object before typing.
-
-## Small enough to read
-
-| File | Job |
+| Path | Contents |
 | --- | --- |
-| [agent.py](jev_ultrafast/agent.py) | The complete loop and text-helper handoff |
-| [snapshot.js](jev_ultrafast/snapshot.js) | Atomic DOM snapshot, indexed controls, freshness guards |
-| [browser.py](jev_ultrafast/browser.py) | Browser connection, current geometry, execution |
-| [model.py](jev_ultrafast/model.py) | Dynamic operation/target heads and text generation |
-| [questions.py](jev_ultrafast/questions.py) | Model instructions |
-| [demo.py](jev_ultrafast/demo.py) | Local inspector |
-
-## Evidence and limits
-
-The current video is a **7,073 ms** Google Flights run. Timing starts after initial page observation and includes model calls, generated text, browser work, stale decisions, and loading waits. A fresh independent check verifies the one-way setting, Zürich, London, September 20, 2026, and visible flight options. The video plays at 1×, with no opening hold and a 0.5-second final hold.
-
-In six alternating runs with identical models and settings, both versions passed **3/3**. Median task time went from **9.450 s → 7.092 s**, a **25% reduction**; median browser protocol calls went from **1,092 → 101**. This is three repeats of one task on one browser profile, not a general reliability benchmark.
-
-The same policy opened the requested Wikipedia article in **2.798 s** and passed a local hotel search/filter task in **1.896 s**. Runs, failures, source hashes, and measurement boundaries are in [performance.md](docs/performance.md).
-
-A `DONE` choice still requires independent outcome verification. The DOM reader handles common HTML and ARIA controls, not the full accessible-name specification. Shadow roots, frames, canvas, uploads, pop-up tabs, nested scrolling, and arbitrary keyboard widgets remain outside this MVP. Owned tabs share the existing Chrome profile.
+| `jev_ultrafast/` | The agent loop, page reader (`snapshot.js`), browser layer, model calls, harness and tools |
+| `scripts/` | Task runner, step answering, reviewer, batch scripts, ATS helpers, live checks |
+| `ai-job-search/` | The Claude Code workspace: skills, commands, portal CLIs, templates, tests |
+| `.claude/skills/supervise-jev/` | Supervision skill and operator briefs |
+| `docs/` | Design notes, harness and Meta-UI documents |
+| `tests/` | Offline tests (no network, no paid APIs) |
 
 ## Development
 
@@ -235,11 +161,10 @@ uv run ruff check .
 uv run pytest
 node --check jev_ultrafast/static/app.js
 node --check jev_ultrafast/snapshot.js
-uv build
 ```
 
-Tests are offline. `uv run python scripts/check_guards.py` checks real controls in a local browser without model calls. Live examples and recording scripts make paid API calls. `scripts/record_flights.py <new-folder>` captures original browser timestamps; `scripts/render_demo.py <recording-folder>` renders that verified run at 1× and crops out the Google account strip. Credentials and raw traces stay ignored.
+Offline tests never call a paid API. `scripts/check_guards.py` and `scripts/check_harness.py` drive a real Chrome against local pages and make no model calls.
 
----
+## License
 
-[Browser Use](https://github.com/browser-use/browser-use) · [Browser Harness](https://github.com/browser-use/browser-harness) · [TypeSafe speculative fan-out](https://docs.typesafe.ai/patterns/fan-out)
+MIT. See [LICENSE](LICENSE) and [ai-job-search/LICENSE](ai-job-search/LICENSE), which carry the copyright notices of the code this project includes.

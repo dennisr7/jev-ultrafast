@@ -2,7 +2,7 @@
 
 You are helping the user build a job-portal search skill for a job board in their market. The repo ships worked examples of the pattern (four Danish portals plus the country-agnostic `linkedin-search`), and the README invites users elsewhere to build equivalents — this command turns that invitation into a guided workflow: investigate the portal, scaffold the skill from the canonical structure, and test-run a live query before registering anything.
 
-The generator is **country-agnostic**: it works for any portal in any market and language. The skills it produces are typically market-specific and live in the user's fork (per repo policy, country-specific portal skills are not merged upstream — the generator is the upstream feature, its output is yours).
+The generator is **country-agnostic**: it works for any portal in any market and language. The skills it produces are typically market-specific and live in your workspace.
 
 `$ARGUMENTS` may contain a subcommand, a portal URL, or nothing.
 
@@ -119,7 +119,7 @@ Do not proceed to Step 5 until search, detail, and tests all pass.
 ## Step 5: Register
 
 1. Ask whether the user wants the new portal added to their `/scrape` search strategy. If yes, add the portal's site to the relevant query categories in `.claude/skills/job-scraper/search-queries.md` (site-specific queries, like the existing `jobindex.dk` entries) so `/scrape` includes it.
-2. Remind the user to add the install line for their own records if they maintain a fork README:
+2. Remind the user to add the install line for their own records if they keep a README for their workspace:
    ```bash
    cd .agents/skills/<name>/cli && bun install && cd ../../../..
    ```
@@ -140,13 +140,13 @@ Present a summary:
 >
 > Try it: `bun run .agents/skills/<name>/cli/src/cli.ts search -q "<test query>" --format table`
 >
-> Per upstream policy, market-specific skills like this live in your fork rather than being PR'd upstream. If the portal changes its markup later, `url-reference.md` records the parsing anchors to update.
+> Market-specific skills like this live in your workspace. If the portal changes its markup later, `url-reference.md` records the parsing anchors to update.
 
 ---
 
 ## Design Principles
 
-- The generator is country-agnostic; its output is market-specific and stays in the user's fork. This matches the repo policy that upstream stays a universal template.
+- The generator is country-agnostic; its output is market-specific and stays in the user's workspace.
 - Investigation before scaffolding: the command never generates parsers from guesses - Step 2 fetches real responses first, and Step 4 verifies against live data before anything is registered.
 - The portal-skill contract keeps every generated skill interchangeable with the shipped ones: same commands, same flags, same output shape, same error convention.
 - Zero runtime dependencies by default, matching `linkedin-search` - a portal skill should run on a fresh clone with nothing but `bun`.

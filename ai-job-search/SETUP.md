@@ -107,14 +107,13 @@ EOF
 
 If `pdftotext` is missing, `/apply` skips the mechanical check with a warning and falls back to a visual keyword review — everything else works normally.
 
-## 2. Fork and clone
+## 2. Open the workspace
+
+This folder is the workspace. Run Claude Code from here.
 
 ```bash
-gh repo fork MadsLorentzen/ai-job-search --clone
 cd ai-job-search
 ```
-
-Or manually: fork on GitHub, then clone your fork.
 
 ## 3. Install job search CLI dependencies
 Run these from the repository root.
