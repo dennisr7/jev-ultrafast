@@ -58,6 +58,8 @@ cd jev-ultrafast
 uv sync
 cp .env.example .env
 # Add TYPESAFE_API_KEY and TEXT_MODEL_API_KEY.
+# Or use Jev via Vercel AI Gateway: put an AI Gateway key in TYPESAFE_API_KEY and set
+# TYPESAFE_BASE_URL=https://ai-gateway.vercel.sh/typesafe
 uv run jev
 ```
 
@@ -89,7 +91,108 @@ uv run --env-file .env python examples/run.py \
   --goal 'Find and open the Wikipedia article about Gödel’s incompleteness theorems.'
 ```
 
+`uv run --env-file .env python scripts/jev_task.py --url URL --goal '...'` runs one task and prints a JSON result (outcome, steps, final URL, page text, `final.jpg`). Add `--step` to pause before every action and approve it with `go`, `skip` or `stop`. A `DONE` outcome still needs independent verification.
+
 `uv run --env-file .env python examples/flights.py --keep-open` performs the flight search, checks the actual route/date/results, and saves its trace. It does not select or book a flight.
+
+## Drive it as tools (the harness)
+
+`Agent` asks the policy model to choose every step. `Harness` exposes the same guarded browser layer directly, so you (or Claude) can act on an element without a model call, record the steps, and replay them later.
+
+```python
+from jev_ultrafast.harness import Harness, render
+
+with Harness("https://example.com/form") as h:
+    view = h.observe()                 # elements with handles, supported operations, options, required fields
+    print(render(view))                # the same view as a compact text table
+    name = next(e for e in view["elements"] if e["label"] == "Full name")
+    h.act(name["handle"], "TYPE_TEXT", text="Ada Lovelace")
+    h.act(None, "SCROLL_DOWN")
+    trace = list(h.trace)              # recorded before each re-observation
+
+with Harness("https://example.com/form") as h:
+    print(h.replay(trace))             # {"ok": True, ...} or {"ok": False, "failed_at": N, "error": ...}
+```
+
+- A handle names an element the code observed (`<label>-<hash of role, label and nearby text>`). It survives a page rebuild.
+- `act` refuses if the page changed since your last `observe` (`StalePage`). Observe again and decide again.
+- `replay` finds each element again by handle. If the nearby text changed, it falls back to the label only when that label was unique when recorded, so a duplicate "Delete" can never land on another row. It stops at the first step that cannot run.
+- `h.run(goal)` hands a natural-language goal to the Jev loop on the same tab. Its result is not verified.
+- `jev_ultrafast.tools` has `TOOLS` (JSON-schema definitions: `observe`, `act`, `run_goal`, `replay`) and `dispatch(harness, name, args, approve=None)`. They match the shape Claude tool use accepts. `approve(name, args, label)` is a human gate: return `False` to refuse an action. Errors come back as `{"error": ...}` so the model can observe again. This wiring has offline tests and live checks against a local page; it has not been run end to end through the Claude API.
+
+Details and limits: [docs/general-harness.md](docs/general-harness.md).
+
+## Tutorial: fill a job application with ai-job-search
+
+[ai-job-search](https://github.com/MadsLorentzen/ai-job-search) is a Claude Code workspace that finds roles, scores fit, and drafts a tailored CV and cover letter. Jev does the last step: it fills the web form, and **you** review and submit. This assumes ai-job-search is cloned and this repo sits inside it as `jev-ultrafast/`.
+
+### 1. Set up and check the browser
+
+```bash
+cd jev-ultrafast
+uv sync
+cp .env.example .env          # add TYPESAFE_API_KEY and TEXT_MODEL_API_KEY
+uv run browser-harness --doctor
+```
+
+Jev needs Chrome with remote debugging. Either turn it on at `chrome://inspect/#remote-debugging` (it then shares your signed-in profile), or give Jev its own throwaway Chrome so your browser is never touched:
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9333 \
+  --user-data-dir=/tmp/jev-profile --no-first-run about:blank &
+export BU_CDP_URL=http://127.0.0.1:9333 BU_NAME=jev
+```
+
+Check the setup before pointing Jev at anything real. Neither check calls a model or visits a website:
+
+```bash
+uv run python scripts/check_guards.py                    # 21 browser freshness and safety checks
+uv run python scripts/check_harness.py --rounds 3        # the harness against a local test page
+```
+
+### 2. Pick a role and prepare documents (in ai-job-search)
+
+In Claude Code, from the ai-job-search folder: `/scrape` or `/greenhouse-sweep` finds postings, `/rank` shortlists them, and `/apply <posting URL>` evaluates fit and produces a tailored CV and cover letter. Save the PDFs; Jev attaches them in step 4.
+
+### 3. Write a narrow goal
+
+A good goal states one outcome, answers the form's own questions verbatim, lists what to leave alone, and forbids submitting. For a Greenhouse posting, list that posting's real questions first:
+
+```bash
+curl -s "https://boards-api.greenhouse.io/v1/boards/<board>/jobs/<job id>?questions=true"
+```
+
+Then write the goal in this shape. Values written as `N) Label = "value"` are typed exactly as written with no model call, which also keeps long answers from being reworded:
+
+```text
+Fill this job application without submitting it. Click "Autofill my application" if the form has it.
+Answer these questions, top to bottom: 1) Are you legally authorized to work in the United States? = "Yes";
+2) Will you require visa sponsorship? = "No". For a dropdown, open it and click the exact option.
+Leave these blank: "Why do you want to work here?". Never touch the Voluntary Self-Identification
+section or any other field. Never click Submit application. Choose DONE when every question above shows its answer.
+```
+
+Rules that keep this safe:
+- Never put passwords, card numbers, government IDs or API keys in a goal.
+- A question you have not answered yourself stays blank. Do not let anything guess it.
+- Attestations, arbitration or AI-policy checkboxes, and voluntary self-identification are yours to answer. Leave them out of the goal.
+- Keep your answers in a local file that is git-ignored, not in this repo.
+
+### 4. Run it with you approving each step
+
+```bash
+uv run --env-file .env python scripts/jev_task.py --url "<application URL>" --goal "<your goal>" --step --keep-open
+```
+
+`--step` pauses before every action and prints the decision (operation, element, confidence, URL). In a second terminal answer with `python3 scripts/jev_answer.py wait` to see the pending step, then `go`, `skip` or `stop`. Check each step against your goal, and refuse anything that submits, sends or deletes. A `BLOCKED` on an unexpected page is correct behavior, not a failure. Attach the resume with `--attach FIELD_ID=/path/to/resume.pdf` if the form has an upload.
+
+### 5. Optional: let Claude supervise
+
+The `supervise-jev` skill in ai-job-search runs this loop for you: it starts the task, reviews each decision against the goal, refuses Submit outright, escalates anything unusual to you, and verifies the final page. In Claude Code say, for example, "supervise Jev on this application", and review its report.
+
+### 6. Verify and submit yourself
+
+`DONE` is not proof. Read the final page (`artifacts/jev_task/final.jpg` and the result JSON), check every required field and answer, then click Submit yourself in the kept-open tab. To repeat a flow on a similar form, use the harness above: record a trace once and `replay` it, falling back to `run_goal` if a step fails.
 
 ## Why it moves
 
